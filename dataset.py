@@ -18,14 +18,20 @@ class SplitDataset(Dataset):
         self.transform = transform
 
     @staticmethod
-    def _draw(raw_strokes, size=256, lw=6, time_color=True):
-        img = np.zeros((size, size, 3), np.uint8)
-        for t, stroke in enumerate(raw_strokes):
-            for i in range(len(stroke[0]) - 1):
-                color = 255 - min(t, 10) * 13 if time_color else 255
-                _ = cv2.line(img, (stroke[0][i], stroke[1][i]),
-                             (stroke[0][i + 1], stroke[1][i + 1]), color, lw)
+    def n_color(n):
+        x = np.arange(0, 255, 255 / n, dtype=np.uint8)
+        x = cv2.applyColorMap(x, cv2.COLORMAP_RAINBOW)[:, 0, ::-1]
+        return x.tolist()
 
+    @staticmethod
+    def _draw(strokes, size=256, lw=2):
+        img = np.zeros((size, size, 3), np.uint8)
+        colors = SplitDataset.n_color(len(strokes))
+        for t, stroke in enumerate(strokes):
+            color = colors[t]
+            for i in range(len(stroke[0]) - 1):
+                cv2.line(img, (stroke[0][i], stroke[1][i]), (stroke[0][i + 1], stroke[1][i + 1]),
+                         color=color, thickness=lw, lineType=cv2.LINE_AA)
         return Image.fromarray(img)
 
     def __len__(self):
@@ -33,7 +39,7 @@ class SplitDataset(Dataset):
 
     def __getitem__(self, idx):
         raw_strokes = ast.literal_eval(self.doodle.drawing[idx])
-        sample = self._draw(raw_strokes, size=self.size, lw=2, time_color=True)
+        sample = SplitDataset._draw(raw_strokes, size=self.size, lw=2)
         if self.transform:
             sample = self.transform(sample)
         if self.mode == 'train':
