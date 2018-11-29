@@ -14,6 +14,7 @@ torch.cuda.set_device(hvd.local_rank())
 
 parser = argparse.ArgumentParser(description='doodle training', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--model', default='resnet34', type=str, help='model_name')
+parser.add_argument('--tag', default='test', type=str, help='model_name')
 parser.add_argument('--checkpoint', default=None, type=str, help='checkpoint path')
 parser.add_argument('--width', default=256, type=int, help='strokes image width')
 parser.add_argument('--batch_size', default=224, type=int, help='batch_size')
@@ -26,9 +27,8 @@ if hvd.rank() == 0:
     print(args)
 
 
-model_name = args.model
-model = pretrainedmodels.__dict__[model_name](num_classes=1000, pretrained='imagenet')
-model.name = model_name
+model = pretrainedmodels.__dict__[args.model](num_classes=1000, pretrained='imagenet')
+model.name = f'{args.model}_{args.tag}'
 
 transform = utils.TransformImage(model)
 width = args.width
