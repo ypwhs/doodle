@@ -107,17 +107,7 @@ def test(model, test_loader):
     return mean_loss, mean_map, t
 
 
-def mixup_data(x, y, alpha=1.0):
-    lam = np.random.beta(alpha, alpha)
-    batch_size = x.size()[0]
-    index = torch.randperm(batch_size).cuda()
-
-    mixed_x = lam * x + (1 - lam) * x[index, :]
-    y_a, y_b = y, y[index]
-    return mixed_x, y_a, y_b, lam
-
-
-def train(model, train_loader, optimizer, epoch, scheduler=None, mixup=False, mixup_alpha=0.2, class_num=340):
+def train(model, train_loader, optimizer, epoch, scheduler=None):
     mean_loss = 0
     mean_map = 0
 
@@ -130,20 +120,12 @@ def train(model, train_loader, optimizer, epoch, scheduler=None, mixup=False, mi
     total_loss = 0.0
     total_map = 0.0
     for batch_idx, (data, target) in enumerate(pbar):
-        if mixup:
-            with torch.no_grad():
-                data, target_a, target_b, lam = mixup_data(data, target, mixup_alpha)
-                target_a, target_b = target_a.cuda(), target_b.cuda()
-
         data, target = data.cuda(), target.cuda()
         if scheduler:
             scheduler.step()
         optimizer.zero_grad()
         output = model(data)
-        if mixup:
-            loss = lam * F.cross_entropy(output, target_a) + (1 - lam) * F.cross_entropy(output, target_b)
-        else:
-            loss = F.cross_entropy(output, target)
+        loss = F.cross_entropy(output, target)
 
         loss.backward()
         nn.utils.clip_grad.clip_grad_norm_(model.parameters(), 2)

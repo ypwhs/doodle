@@ -14,7 +14,10 @@ class SplitDataset(Dataset):
     def __init__(self, filename, mode='train', size=256, transform=None):
         self.mode = mode
         self.size = size
-        self.doodle = pd.read_csv(filename, usecols=['drawing', 'y'])
+        if self.mode == 'train':
+            self.doodle = pd.read_csv(filename, usecols=['drawing', 'y'])
+        else:
+            self.doodle = pd.read_csv(filename, usecols=['drawing'])
         self.transform = transform
 
     @staticmethod
