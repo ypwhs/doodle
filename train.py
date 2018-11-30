@@ -19,7 +19,6 @@ parser.add_argument('--checkpoint', default=None, type=str, help='checkpoint pat
 parser.add_argument('--width', default=256, type=int, help='strokes image width')
 parser.add_argument('--batch_size', default=224, type=int, help='batch_size')
 parser.add_argument('--num_workers', default=4, type=int, help='num_workers')
-parser.add_argument('--nowarmup', action='store_true', help='skip warmup')
 
 args = parser.parse_args()
 
@@ -59,9 +58,16 @@ if args.checkpoint:
 hvd.broadcast_parameters(model.state_dict(), root_rank=0)
 hvd.broadcast_optimizer_state(optimizer, root_rank=0)
 
-if not args.nowarmup:
+epoch = 0
+tag = args.checkpoint.split('_')[-1].split('.')[0]
+if tag == 'warmup':
+    epoch = 5
+elif tag.isnumeric():
+    epoch = int(tag)
+
+if epoch < 5:
     for i in [20, 40, 60, 80, 99]:
-        epoch = i + 1
+        epoch += 1
         train_loader = get_split_dataloader(f'split_recognized/train_k{i}.csv', width=width, batch_size=batch_size,
                                             transform=transform, num_workers=num_workers)
         train(model, train_loader, optimizer=optimizer, epoch=epoch, scheduler=scheduler_warmup)
@@ -71,8 +77,11 @@ if not args.nowarmup:
         checkpoint_path = save_checkpoint(model, optimizer, test_acc=mean_map, tag='warmup')
 
 # training
-for i in range(240):
-    epoch = i + 1
+for i in range(epoch):
+    scheduler_train.step()
+
+for i in range(epoch, 240):
+    epoch += 1
     scheduler_train.step()
     train_loader = get_split_dataloader(f'split_recognized/train_k{i % 99}.csv', width=width, batch_size=batch_size,
                                         transform=transform, num_workers=num_workers)
