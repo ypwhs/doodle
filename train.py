@@ -23,6 +23,7 @@ parser.add_argument('--mixup', action='store_true',
                     help='whether train the model with mix-up. default is false.')
 parser.add_argument('--mixup-alpha', type=float, default=0.2,
                     help='beta distribution parameter for mixup sampling, default is 0.2.')
+parser.add_argument('--lr', type=float, default=0.1, help='learning rate')
 
 args = parser.parse_args()
 
@@ -49,7 +50,7 @@ valid_loader = get_split_dataloader(f'split_recognized/train_k99.csv', width=wid
 # optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, amsgrad=True)
 
 scale_lr = batch_size * hvd.size() / 128
-optimizer = torch.optim.SGD(model.parameters(), lr=0.1, momentum=0.9)
+optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=0.9)
 optimizer = hvd.DistributedOptimizer(optimizer, named_parameters=model.named_parameters())
 
 scheduler_warmup = LambdaLR(optimizer, lambda step: 1 + (scale_lr - 1) * step / len(valid_loader) / 5)
