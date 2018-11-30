@@ -50,7 +50,7 @@ optimizer = torch.optim.SGD(model.parameters(), lr=0.1, momentum=0.9)
 optimizer = hvd.DistributedOptimizer(optimizer, named_parameters=model.named_parameters())
 
 scheduler_warmup = LambdaLR(optimizer, lambda step: 1 + (scale_lr - 1) * step / len(valid_loader) / 5)
-scheduler_train = MultiStepLR(optimizer, milestones=[30, 60, 80])
+scheduler_train = MultiStepLR(optimizer, milestones=[80, 160, 200])
 scheduler_train.base_lrs = [x * scale_lr for x in scheduler_train.base_lrs]
 
 if args.checkpoint:
@@ -60,7 +60,7 @@ hvd.broadcast_parameters(model.state_dict(), root_rank=0)
 hvd.broadcast_optimizer_state(optimizer, root_rank=0)
 
 if not args.nowarmup:
-    for i in range(5):
+    for i in [20, 40, 60, 80, 99]:
         epoch = i + 1
         train_loader = get_split_dataloader(f'split_recognized/train_k{i}.csv', width=width, batch_size=batch_size,
                                             transform=transform, num_workers=num_workers)
@@ -71,12 +71,17 @@ if not args.nowarmup:
         checkpoint_path = save_checkpoint(model, optimizer, test_acc=mean_map, tag='warmup')
 
 # training
-for i in range(5, 99):
+for i in range(240):
     epoch = i + 1
-    train_loader = get_split_dataloader(f'split_recognized/train_k{i}.csv', width=width, batch_size=batch_size,
+    scheduler_train.step()
+    train_loader = get_split_dataloader(f'split_recognized/train_k{i % 99}.csv', width=width, batch_size=batch_size,
                                         transform=transform, num_workers=num_workers)
     train(model, train_loader, optimizer=optimizer, epoch=epoch)
     if epoch % evaluate_interval == 0:
         mean_loss, mean_map, t = test(model, valid_loader)
         if hvd.rank() == 0:
             checkpoint_path = save_checkpoint(model, optimizer, test_acc=mean_map, tag=epoch)
+
+mean_loss, mean_map, t = test(model, valid_loader)
+if hvd.rank() == 0:
+    checkpoint_path = save_checkpoint(model, optimizer, test_acc=mean_map, tag=epoch)
