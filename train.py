@@ -19,6 +19,10 @@ parser.add_argument('--checkpoint', default=None, type=str, help='checkpoint pat
 parser.add_argument('--width', default=256, type=int, help='strokes image width')
 parser.add_argument('--batch_size', default=224, type=int, help='batch_size')
 parser.add_argument('--num_workers', default=4, type=int, help='num_workers')
+parser.add_argument('--mixup', action='store_true',
+                    help='whether train the model with mix-up. default is false.')
+parser.add_argument('--mixup-alpha', type=float, default=0.2,
+                    help='beta distribution parameter for mixup sampling, default is 0.2.')
 
 args = parser.parse_args()
 
@@ -52,25 +56,26 @@ scheduler_warmup = LambdaLR(optimizer, lambda step: 1 + (scale_lr - 1) * step / 
 scheduler_train = MultiStepLR(optimizer, milestones=[80, 160, 200])
 scheduler_train.base_lrs = [x * scale_lr for x in scheduler_train.base_lrs]
 
+epoch = 0
 if args.checkpoint:
     load_checkpoint(model, optimizer, args.checkpoint)
+    tag = args.checkpoint.split('_')[-1].split('.')[0]
+    if tag == 'warmup':
+        epoch = 5
+    elif tag.isnumeric():
+        epoch = int(tag)
 
 hvd.broadcast_parameters(model.state_dict(), root_rank=0)
 hvd.broadcast_optimizer_state(optimizer, root_rank=0)
 
-epoch = 0
-tag = args.checkpoint.split('_')[-1].split('.')[0]
-if tag == 'warmup':
-    epoch = 5
-elif tag.isnumeric():
-    epoch = int(tag)
 
 if epoch < 5:
     for i in [20, 40, 60, 80, 99]:
         epoch += 1
         train_loader = get_split_dataloader(f'split_recognized/train_k{i}.csv', width=width, batch_size=batch_size,
                                             transform=transform, num_workers=num_workers)
-        train(model, train_loader, optimizer=optimizer, epoch=epoch, scheduler=scheduler_warmup)
+        train(model, train_loader, optimizer=optimizer, epoch=epoch, scheduler=scheduler_warmup,
+              mixup=args.mixup, mixup_alpha=args.mixup_alpha)
 
     mean_loss, mean_map, t = test(model, valid_loader)
     if hvd.rank() == 0:
@@ -85,7 +90,7 @@ for i in range(epoch, 240):
     scheduler_train.step()
     train_loader = get_split_dataloader(f'split_recognized/train_k{i % 99}.csv', width=width, batch_size=batch_size,
                                         transform=transform, num_workers=num_workers)
-    train(model, train_loader, optimizer=optimizer, epoch=epoch)
+    train(model, train_loader, optimizer=optimizer, epoch=epoch, mixup=args.mixup, mixup_alpha=args.mixup_alpha)
     if epoch % evaluate_interval == 0:
         mean_loss, mean_map, t = test(model, valid_loader)
         if hvd.rank() == 0:
