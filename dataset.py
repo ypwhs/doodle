@@ -28,7 +28,7 @@ class SplitDataset(Dataset):
 
     @staticmethod
     def _draw(strokes, size=256, lw=2):
-        img = np.zeros((size, size, 3), np.uint8)
+        img = np.zeros((size, size, 3), np.uint8) + np.random.randint(0, 1) * 255
         colors = SplitDataset.n_color(len(strokes))
         for t, stroke in enumerate(strokes):
             color = colors[t]
