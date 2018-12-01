@@ -46,7 +46,7 @@ def save_checkpoint(model, optimizer, test_acc, tag, path='checkpoints'):
     filename = f'{path}/{model.name}_{test_acc:.4f}_{tag}.pt'
     state = {
         'model': model.state_dict(),
-        'optimizer': optimizer.state_dict(),
+        # 'optimizer': optimizer.state_dict(),
     }
     torch.save(state, filename)
     print('\nSave checkpoint', filename)
@@ -56,7 +56,7 @@ def save_checkpoint(model, optimizer, test_acc, tag, path='checkpoints'):
 def load_checkpoint(model, optimizer, path):
     state = torch.load(path, map_location='cpu')
     model.load_state_dict(state['model'])
-    optimizer.load_state_dict(state['optimizer'])
+    # optimizer.load_state_dict(state['optimizer'])
 
 
 def change_lr(optimizer, lr, weight_decay=1e-5):

@@ -1,13 +1,14 @@
 import torch
 import torch.nn as nn
 import pretrainedmodels
-import pretrainedmodels.utils as utils
+import torchvision.transforms as transforms
 
+import argparse
 import horovod.torch as hvd
 from dataset import get_split_dataloader
-from training import train, test, save_checkpoint, load_checkpoint, change_lr
+from training import train, test, save_checkpoint, load_checkpoint
 from torch.optim.lr_scheduler import LambdaLR, MultiStepLR
-import argparse
+from WideResNeXt import get_wideresnext34
 
 hvd.init()
 torch.cuda.set_device(hvd.local_rank())
@@ -19,26 +20,38 @@ parser.add_argument('--checkpoint', default=None, type=str, help='checkpoint pat
 parser.add_argument('--width', default=256, type=int, help='strokes image width')
 parser.add_argument('--batch_size', default=224, type=int, help='batch_size')
 parser.add_argument('--num_workers', default=4, type=int, help='num_workers')
+parser.add_argument('--dataset', default='split', type=str, help='dataset')
 parser.add_argument('--lr', type=float, default=0.1, help='learning rate')
-
+parser.add_argument('--pretrained', action='store_true', help='use imagenet pretrained weights')
 args = parser.parse_args()
 
 if hvd.rank() == 0:
     print(args)
 
+if args.model == 'wideresnext34':
+    model = get_wideresnext34()
+else:
+    model = pretrainedmodels.__dict__[args.model](num_classes=1000, pretrained='imagenet' if args.pretrained else None)
 
-model = pretrainedmodels.__dict__[args.model](num_classes=1000, pretrained='imagenet')
-model.name = f'{args.model}_{args.tag}'
-
-transform = utils.TransformImage(model)
 width = args.width
 batch_size = args.batch_size
 num_workers = args.num_workers
 num_classes = 340
 evaluate_interval = 10
 
-model.last_linear = nn.Linear(in_features=model.last_linear.in_features, out_features=num_classes, bias=True)
+model.name = f'{args.model}_{args.tag}'
+model.avgpool = nn.AdaptiveAvgPool2d(1)
+model.avgpool_1a = nn.AdaptiveAvgPool2d(1)
+if args.model == 'wideresnext34':
+    model.fc = nn.Linear(in_features=model.fc.in_features, out_features=num_classes, bias=True)
+else:
+    model.last_linear = nn.Linear(in_features=model.last_linear.in_features, out_features=num_classes, bias=True)
 model = model.cuda()
+
+transform = transforms.Compose([
+    transforms.Resize(size=(width, width)),
+    transforms.ToTensor()
+])
 
 valid_loader = get_split_dataloader(f'split_recognized/train_k99.csv', width=width, batch_size=batch_size,
                                     transform=transform, num_workers=num_workers)
@@ -63,11 +76,10 @@ if args.checkpoint:
 hvd.broadcast_parameters(model.state_dict(), root_rank=0)
 hvd.broadcast_optimizer_state(optimizer, root_rank=0)
 
-
-if epoch < 5:
+if epoch == 0:
     for i in [20, 40, 60, 80, 99]:
         epoch += 1
-        train_loader = get_split_dataloader(f'split_recognized/train_k{i}.csv', width=width, batch_size=batch_size,
+        train_loader = get_split_dataloader(f'{args.dataset}/train_k{i}.csv', width=width, batch_size=batch_size,
                                             transform=transform, num_workers=num_workers)
         train(model, train_loader, optimizer=optimizer, epoch=epoch, scheduler=scheduler_warmup)
 
@@ -82,7 +94,7 @@ for i in range(epoch):
 for i in range(epoch, 240):
     epoch += 1
     scheduler_train.step()
-    train_loader = get_split_dataloader(f'split_recognized/train_k{i % 99}.csv', width=width, batch_size=batch_size,
+    train_loader = get_split_dataloader(f'{args.dataset}/train_k{i % 99}.csv', width=width, batch_size=batch_size,
                                         transform=transform, num_workers=num_workers)
     train(model, train_loader, optimizer=optimizer, epoch=epoch)
     if epoch % evaluate_interval == 0:
