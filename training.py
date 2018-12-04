@@ -65,7 +65,7 @@ def change_lr(optimizer, lr, weight_decay=1e-5):
         param_group['weight_decay'] = weight_decay
 
 
-def test(model, test_loader):
+def test(model, test_loader, half=False):
     model.eval()
     total_loss = 0.0
     total_map = 0.0
@@ -80,6 +80,8 @@ def test(model, test_loader):
             pbar = test_loader
 
         for batch_idx, (data, target) in enumerate(pbar):
+            if half:
+                data = data.half()
             if torch.cuda.is_available():
                 data, target = data.cuda(), target.cuda()
             output = model(data)
@@ -107,7 +109,7 @@ def test(model, test_loader):
     return mean_loss, mean_map, t
 
 
-def train(model, train_loader, optimizer, epoch, scheduler=None):
+def train(model, train_loader, optimizer, epoch, scheduler=None, half=False):
     mean_loss = 0
     mean_map = 0
 
@@ -120,6 +122,8 @@ def train(model, train_loader, optimizer, epoch, scheduler=None):
     total_loss = 0.0
     total_map = 0.0
     for batch_idx, (data, target) in enumerate(pbar):
+        if half:
+            data = data.half()
         data, target = data.cuda(), target.cuda()
         if scheduler:
             scheduler.step()

@@ -9,6 +9,7 @@ from dataset import get_split_dataloader
 from training import train, test, save_checkpoint, load_checkpoint
 from torch.optim.lr_scheduler import LambdaLR, MultiStepLR
 from WideResNeXt import get_wideresnext34
+from fp16util import network_to_half
 
 hvd.init()
 torch.cuda.set_device(hvd.local_rank())
@@ -23,6 +24,7 @@ parser.add_argument('--num_workers', default=6, type=int, help='num_workers')
 parser.add_argument('--dataset', default='split', type=str, help='dataset')
 parser.add_argument('--lr', type=float, default=1e-3, help='learning rate')
 parser.add_argument('--pretrained', action='store_true', help='use imagenet pretrained weights')
+parser.add_argument('--half', action='store_true', help='half')
 args = parser.parse_args()
 
 if hvd.rank() == 0:
@@ -39,21 +41,20 @@ num_workers = args.num_workers
 num_classes = 340
 evaluate_interval = 10
 
-model.name = f'{args.model}_{args.tag}'
 model.avgpool = nn.AdaptiveAvgPool2d(1)
+model.avg_pool = nn.AdaptiveAvgPool2d(1)
 model.avgpool_1a = nn.AdaptiveAvgPool2d(1)
 if args.model == 'wideresnext34':
     model.fc = nn.Linear(in_features=model.fc.in_features, out_features=num_classes, bias=True)
 else:
     model.last_linear = nn.Linear(in_features=model.last_linear.in_features, out_features=num_classes, bias=True)
-model = model.cuda()
 
 transform = transforms.Compose([
     transforms.Resize(size=(width, width)),
     transforms.ToTensor()
 ])
 
-valid_loader = get_split_dataloader(f'{args.dataset}/train_k99.csv', batch_size=batch_size,
+valid_loader = get_split_dataloader(f'{args.dataset}/train_k99.csv', width=width, batch_size=batch_size,
                                     transform=transform, num_workers=num_workers)
 
 optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, amsgrad=True)
@@ -65,6 +66,11 @@ if args.checkpoint:
     tag = args.checkpoint.split('_')[-1].split('.')[0]
     if tag.isnumeric():
         epoch = int(tag)
+
+if args.half:
+    model = network_to_half(model)
+model = model.cuda()
+model.name = f'{args.model}_{args.tag}'
 
 hvd.broadcast_parameters(model.state_dict(), root_rank=0)
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=40, gamma=0.5623)
@@ -78,12 +84,12 @@ for i in range(epoch, 400):
     scheduler.step()
     train_loader = get_split_dataloader(f'{args.dataset}/train_k{i % 99}.csv', width=width, batch_size=batch_size,
                                         transform=transform, num_workers=num_workers)
-    train(model, train_loader, optimizer=optimizer, epoch=epoch)
+    train(model, train_loader, optimizer=optimizer, epoch=epoch, half=args.half)
     if epoch % evaluate_interval == 0:
-        mean_loss, mean_map, t = test(model, valid_loader)
+        mean_loss, mean_map, t = test(model, valid_loader, half=args.half)
         if hvd.rank() == 0:
             checkpoint_path = save_checkpoint(model, optimizer, test_acc=mean_map, tag=epoch)
 
-mean_loss, mean_map, t = test(model, valid_loader)
+mean_loss, mean_map, t = test(model, valid_loader, half=args.half)
 if hvd.rank() == 0:
     checkpoint_path = save_checkpoint(model, optimizer, test_acc=mean_map, tag=epoch)
