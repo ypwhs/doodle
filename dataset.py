@@ -11,7 +11,7 @@ from PIL import Image
 
 class SplitDataset(Dataset):
 
-    def __init__(self, filename, mode='train', size=256, transform=None):
+    def __init__(self, filename, mode='train', size=256, transform=None, bw_mode='black'):
         self.mode = mode
         self.size = size
         if self.mode == 'train':
@@ -19,6 +19,7 @@ class SplitDataset(Dataset):
         else:
             self.doodle = pd.read_csv(filename, usecols=['drawing'])
         self.transform = transform
+        self.bw_mode = bw_mode
 
     @staticmethod
     def n_color(n):
@@ -27,8 +28,12 @@ class SplitDataset(Dataset):
         return x.tolist()
 
     @staticmethod
-    def _draw(strokes, size=256, lw=2):
-        img = np.zeros((size, size, 3), np.uint8) + np.random.randint(0, 1) * 255
+    def _draw(strokes, size=256, lw=2, bw_mode='random'):
+        img = np.zeros((size, size, 3), np.uint8)
+        if bw_mode == 'random':
+            img += np.random.randint(0, 2) * 255
+        elif bw_mode == 'white':
+            img += 255
         colors = SplitDataset.n_color(len(strokes))
         for t, stroke in enumerate(strokes):
             color = colors[t]
@@ -42,7 +47,7 @@ class SplitDataset(Dataset):
 
     def __getitem__(self, idx):
         raw_strokes = ast.literal_eval(self.doodle.drawing[idx])
-        sample = SplitDataset._draw(raw_strokes, size=self.size, lw=2)
+        sample = SplitDataset._draw(raw_strokes, size=self.size, lw=2, bw_mode=self.bw_mode)
         if self.transform:
             sample = self.transform(sample)
         if self.mode == 'train':
