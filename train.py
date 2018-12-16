@@ -11,6 +11,8 @@ from torch.optim.lr_scheduler import LambdaLR, MultiStepLR
 from WideResNeXt import get_wideresnext34
 from fp16util import network_to_half
 
+torch.backends.cudnn.benchmark = True
+
 hvd.init()
 torch.cuda.set_device(hvd.local_rank())
 

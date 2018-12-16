@@ -121,6 +121,7 @@ def train(model, train_loader, optimizer, epoch, scheduler=None, half=False):
         pbar = train_loader
     total_loss = 0.0
     total_map = 0.0
+    torch.cuda.empty_cache()
     for batch_idx, (data, target) in enumerate(pbar):
         if half:
             data = data.half()
@@ -149,5 +150,5 @@ def train(model, train_loader, optimizer, epoch, scheduler=None, half=False):
         mean_map = mean_map * 0.9 + 0.1 * (total_map.item() / (batch_idx + 1))
         lr = optimizer.param_groups[0]['lr']
         if hvd.rank() == 0:
-            pbar.set_description(f'Epoch: {epoch} Loss: {mean_loss:.4f} MAP@3: {mean_map*100.:.2f}% LR: {lr:.5f}')
+            pbar.set_description(f'Epoch: {epoch} Loss: {mean_loss:.4f} MAP@3: {mean_map*100.:.2f}% LR: {lr:.5f} ')
     return checkpoint_path
